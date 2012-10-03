@@ -4,7 +4,6 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FssGateway < Gateway
       # TODO:
-      # * Fix remote tests by figuring out how to trigger failure
       # * Figure out how to pass billing address
       # * Implement authorize/capture/refund
       # * Implement 3D-secure flow
@@ -116,7 +115,11 @@ module ActiveMerchant #:nodoc:
       end
 
       def message_from(succeeded, response)
-        (succeeded ? "Succeeded" : "Failed")
+        if succeeded
+          "Succeeded"
+        else
+          response[:result].split("-").last
+        end
       end
     end
   end

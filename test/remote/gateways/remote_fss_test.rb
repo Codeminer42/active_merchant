@@ -5,8 +5,11 @@ class RemoteFssTest < Test::Unit::TestCase
     @gateway = FssGateway.new(fixtures(:fss))
 
     @amount = 100
-    @credit_card = credit_card("4000100011112224")
-    @declined_card = credit_card("4000300011112220")
+    @credit_card = credit_card("4012001037141112")
+
+    # Use an American Express card to simulate a failure until we get a proper
+    # test card.
+    @declined_card = credit_card("377182068239368", :brand => :american_express)
 
     @options = {
       :order_id => "1",
@@ -24,7 +27,8 @@ class RemoteFssTest < Test::Unit::TestCase
   def test_failed_purchase
     assert response = @gateway.purchase(@amount, @declined_card, @options)
     assert_failure response
-    assert_equal "REPLACE WITH FAILED PURCHASE MESSAGE", response.message
+    assert_equal "Invalid Brand.", response.message
+    assert_equal "GW00160", response.params["error_code_tag"]
   end
 
   def test_invalid_login
