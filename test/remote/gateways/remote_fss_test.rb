@@ -31,6 +31,20 @@ class RemoteFssTest < Test::Unit::TestCase
     assert_equal "GW00160", response.params["error_code_tag"]
   end
 
+  def test_successful_authorize
+    assert response = @gateway.authorize(@amount, @credit_card, @options)
+    assert_success response
+    assert_equal "Succeeded", response.message
+    assert_match %r(^\d+$), response.authorization
+  end
+
+  def test_failed_authorize
+    assert response = @gateway.authorize(@amount, @declined_card, @options)
+    assert_failure response
+    assert_equal "Invalid Brand.", response.message
+    assert_equal "GW00160", response.params["error_code_tag"]
+  end
+
   def test_invalid_login
     gateway = FssGateway.new(
                 :login => "",

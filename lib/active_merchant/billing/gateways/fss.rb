@@ -4,8 +4,8 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FssGateway < Gateway
       # TODO:
+      # * Implement capture/refund
       # * Figure out how to pass billing address
-      # * Implement authorize/capture/refund
       # * Implement 3D-secure flow
       self.display_name = "FSS"
       self.homepage_url = "http://www.fss.co.in/"
@@ -31,6 +31,15 @@ module ActiveMerchant #:nodoc:
         add_customer_data(post, options)
 
         commit("purchase", post)
+      end
+
+      def authorize(amount, payment_method, options = {})
+        post = {}
+        add_invoice(post, amount, options)
+        add_payment_method(post, payment_method)
+        add_customer_data(post, options)
+
+        commit("authorize", post)
       end
 
       private
@@ -77,7 +86,9 @@ module ActiveMerchant #:nodoc:
 
       ACTIONS = {
         "purchase" => "1",
-        "authorization" => "4",
+        "refund" => "2",
+        "authorize" => "4",
+        "capture" => "5",
       }
 
       def commit(action, post)
@@ -87,7 +98,7 @@ module ActiveMerchant #:nodoc:
 
         raw = parse(ssl_post(url(action), build_request(post)))
 
-        succeeded = (raw[:result] == "CAPTURED")
+        succeeded = success_from(raw[:result])
         Response.new(
           succeeded,
           message_from(succeeded, raw),
@@ -107,11 +118,21 @@ module ActiveMerchant #:nodoc:
       end
 
       URLS = {
-        "purchase" => "TranPortalXMLServlet"
+        "purchase" => "TranPortalXMLServlet",
+        "authorize" => "TranPortalXMLServlet",
       }
 
       def url(action)
         (test? ? test_url : live_url) + URLS[action]
+      end
+
+      def success_from(result)
+        case result
+        when "CAPTURED", "APPROVED"
+          true
+        else
+          false
+        end
       end
 
       def message_from(succeeded, response)
