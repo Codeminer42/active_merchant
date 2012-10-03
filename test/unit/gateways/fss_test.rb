@@ -30,7 +30,43 @@ class FssTest < Test::Unit::TestCase
     end.respond_with(failed_purchase_response)
 
     assert_failure response
+    assert_equal "Invalid Brand.", response.message
+    assert_equal "GW00160", response.params["error_code_tag"]
     assert response.test?
+  end
+
+  def test_authorize_and_capture
+    response = stub_comms do
+      @gateway.authorize(@amount, @credit_card)
+    end.respond_with(successful_authorize_response)
+
+    assert_success response
+    assert_equal "2441955352022771", response.authorization
+
+    capture = stub_comms do
+      @gateway.capture(@amount, response.authorization)
+    end.check_request do |endpoint, data, headers|
+      assert_match(/2441955352022771/, data)
+    end.respond_with(successful_capture_response)
+
+    assert_success capture
+  end
+
+  def test_refund
+    response = stub_comms do
+      @gateway.purchase(@amount, @credit_card)
+    end.respond_with(successful_purchase_response)
+
+    assert_success response
+    assert_equal "849768440022761", response.authorization
+
+    refund = stub_comms do
+      @gateway.refund(@amount, response.authorization)
+    end.check_request do |endpoint, data, headers|
+      assert_match(/849768440022761/, data)
+    end.respond_with(successful_refund_response)
+
+    assert_success refund
   end
 
   def test_passing_cvv
@@ -43,10 +79,16 @@ class FssTest < Test::Unit::TestCase
 
   def test_passing_currency
     stub_comms do
-      @gateway.purchase(@amount, @credit_card, :currency => "USD")
+      @gateway.purchase(@amount, @credit_card, :currency => "INR")
     end.check_request do |endpoint, data, headers|
-      assert_match(/USD/, data)
+      assert_match(/currencycode>356</, data)
     end.respond_with(successful_purchase_response)
+  end
+
+  def test_passing_invalid_currency
+    assert_raise(ArgumentError, %r(unsupported currency)i) do
+      @gateway.purchase(@amount, @credit_card, :currency => "USD")
+    end
   end
 
   def test_passing_order_id
@@ -82,7 +124,33 @@ class FssTest < Test::Unit::TestCase
     )
   end
 
+  def successful_authorize_response
+    %(
+      <result>APPROVED</result>
+      <auth>999999</auth>
+      <ref>227721068433</ref>
+      <avr>N</avr>
+      <postdate>1004</postdate>
+      <tranid>2441955352022771</tranid>
+      <trackid>49c89e3b84f7563e62d1109dab0379fd</trackid>
+      <payid>-1</payid>
+      <udf1>Store Purchase</udf1>
+      <udf2></udf2>
+      <udf5></udf5>
+      <amt>1.00</amt>
+    )
+  end
+
+  # Use the authorize response until we can get the remote reference tests
+  # working
+  alias successful_capture_response successful_authorize_response
+  alias successful_refund_response successful_authorize_response
+
   def failed_purchase_response
-    %()
+    %(
+      <error_code_tag>GW00160</error_code_tag>
+      <error_service_tag>null</error_service_tag>
+      <result>!ERROR!-GW00160-Invalid Brand.</result>
+    )
   end
 end

@@ -4,9 +4,10 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FssGateway < Gateway
       # TODO:
-      # * Implement capture/refund
       # * Figure out how to pass billing address
       # * Implement 3D-secure flow
+      # * Fix capture/refund remote tests
+      # * Use a proper declined card in remote tests
       self.display_name = "FSS"
       self.homepage_url = "http://www.fss.co.in/"
 
@@ -42,20 +43,38 @@ module ActiveMerchant #:nodoc:
         commit("authorize", post)
       end
 
+      def capture(amount, authorization, options = {})
+        post = {}
+        add_invoice(post, amount, options)
+        add_reference(post, authorization)
+        add_customer_data(post, options)
+
+        commit("capture", post)
+      end
+
+      def refund(amount, authorization, options = {})
+        post = {}
+        add_invoice(post, amount, options)
+        add_reference(post, authorization)
+        add_customer_data(post, options)
+
+        commit("refund", post)
+      end
+
       private
 
-      CURRENCY_CODES = Hash.new{|h,k| raise ArgumentError.new("Invalid currency for FSS: #{k}")}
+      CURRENCY_CODES = Hash.new{|h,k| raise ArgumentError.new("Unsupported currency for FSS: #{k}")}
       CURRENCY_CODES["INR"] = "356"
 
       def add_invoice(post, amount, options)
         post[:amt] = amount(amount)
         post[:currencycode] = CURRENCY_CODES[options[:currency] || currency(amount)]
-        post[:trackid] = options[:order_id]
-        post[:udf1] = options[:description]
+        post[:trackid] = options[:order_id] if options[:order_id]
+        post[:udf1] = options[:description] if options[:description]
       end
 
       def add_customer_data(post, options)
-        post[:udf2] = options[:email]
+        post[:udf2] = options[:email] if options[:email]
       end
 
       def add_payment_method(post, payment_method)
@@ -64,6 +83,10 @@ module ActiveMerchant #:nodoc:
         post[:cvv2] = payment_method.verification_value
         post[:expyear] = format(payment_method.year, :four_digits)
         post[:expmonth] = format(payment_method.month, :two_digits)
+      end
+
+      def add_reference(post, authorization)
+        post[:tranid] = authorization
       end
 
       def parse(xml)
@@ -117,13 +140,8 @@ module ActiveMerchant #:nodoc:
         xml.target!
       end
 
-      URLS = {
-        "purchase" => "TranPortalXMLServlet",
-        "authorize" => "TranPortalXMLServlet",
-      }
-
       def url(action)
-        (test? ? test_url : live_url) + URLS[action]
+        (test? ? test_url : live_url) + "TranPortalXMLServlet"
       end
 
       def success_from(result)
