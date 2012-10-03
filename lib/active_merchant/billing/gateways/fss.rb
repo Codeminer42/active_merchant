@@ -7,7 +7,6 @@ module ActiveMerchant #:nodoc:
       # * Fix remote tests by figuring out how to trigger failure
       # * Figure out how to pass billing address
       # * Implement authorize/capture/refund
-      # * Figure out if discover/amex will work
       # * Implement 3D-secure flow
       self.display_name = "FSS"
       self.homepage_url = "http://www.fss.co.in/"
@@ -18,7 +17,7 @@ module ActiveMerchant #:nodoc:
       self.supported_countries = ["IN"]
       self.default_currency = "INR"
       self.money_format = :dollars
-      self.supported_cardtypes = [:visa, :master]
+      self.supported_cardtypes = [:visa, :master, :discover, :diners_club]
 
       def initialize(options = {})
         requires!(options, :login, :password)
