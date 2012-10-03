@@ -5,7 +5,6 @@ module ActiveMerchant #:nodoc:
     class FssGateway < Gateway
       # TODO:
       # * Fix remote tests by figuring out how to trigger failure
-      # * Get real production urls
       # * Figure out how to pass billing address
       # * Implement authorize/capture/refund
       # * Figure out if discover/amex will work
@@ -14,7 +13,7 @@ module ActiveMerchant #:nodoc:
       self.homepage_url = "http://www.fss.co.in/"
 
       self.test_url = "https://securepgtest.fssnet.co.in/pgway/servlet/"
-      self.live_url = "https://todo"
+      self.live_url = "https://securepg.fssnet.co.in/pgway/servlet/"
 
       self.supported_countries = ["IN"]
       self.default_currency = "INR"
