@@ -4,8 +4,8 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FssGateway < Gateway
       # TODO:
-      # * Figure out how to pass billing address
       # * Implement 3D-secure flow
+      # * Figure out how to pass billing address
       # * Fix capture/refund remote tests
       # * Use a proper declined card in remote tests
       self.display_name = "FSS"
@@ -19,13 +19,22 @@ module ActiveMerchant #:nodoc:
       self.money_format = :dollars
       self.supported_cardtypes = [:visa, :master, :discover, :diners_club]
 
-      def initialize(options = {})
+      def initialize(options={})
         requires!(options, :login, :password)
         @options = options
         super
       end
 
-      def purchase(amount, payment_method, options = {})
+      def preauthorize(amount, payment_method, options={})
+        post = {}
+        add_invoice(post, amount, options)
+        add_payment_method(post, payment_method)
+        add_customer_data(post, options)
+
+        commit("preauth", post)
+      end
+
+      def purchase(amount, payment_method, options={})
         post = {}
         add_invoice(post, amount, options)
         add_payment_method(post, payment_method)
@@ -34,7 +43,7 @@ module ActiveMerchant #:nodoc:
         commit("purchase", post)
       end
 
-      def authorize(amount, payment_method, options = {})
+      def authorize(amount, payment_method, options={})
         post = {}
         add_invoice(post, amount, options)
         add_payment_method(post, payment_method)
@@ -43,7 +52,7 @@ module ActiveMerchant #:nodoc:
         commit("authorize", post)
       end
 
-      def capture(amount, authorization, options = {})
+      def capture(amount, authorization, options={})
         post = {}
         add_invoice(post, amount, options)
         add_reference(post, authorization)
@@ -52,7 +61,7 @@ module ActiveMerchant #:nodoc:
         commit("capture", post)
       end
 
-      def refund(amount, authorization, options = {})
+      def refund(amount, authorization, options={})
         post = {}
         add_invoice(post, amount, options)
         add_reference(post, authorization)
@@ -109,6 +118,7 @@ module ActiveMerchant #:nodoc:
 
       ACTIONS = {
         "purchase" => "1",
+        "preauth" => "1",
         "refund" => "2",
         "authorize" => "4",
         "capture" => "5",
@@ -120,6 +130,7 @@ module ActiveMerchant #:nodoc:
         post[:action] = ACTIONS[action]
 
         raw = parse(ssl_post(url(action), build_request(post)))
+        p raw
 
         succeeded = success_from(raw[:result])
         Response.new(
@@ -127,7 +138,13 @@ module ActiveMerchant #:nodoc:
           message_from(succeeded, raw),
           raw,
           :authorization => raw[:tranid],
-          :test => test?
+          :test => test?,
+          :threed_result => {
+            :enrolled => (raw[:result] == "ENROLLED"),
+            :url => raw[:url],
+            :pareq => raw[:pareq],
+            :md => raw[:payment_id]
+          }
         )
       end
 
@@ -141,12 +158,18 @@ module ActiveMerchant #:nodoc:
       end
 
       def url(action)
-        (test? ? test_url : live_url) + "TranPortalXMLServlet"
+        endpoint = case action
+        when "preauth"
+          "MPIVerifyEnrollmentXMLServlet"
+        else
+          "TranPortalXMLServlet"
+        end
+        (test? ? test_url : live_url) + endpoint
       end
 
       def success_from(result)
         case result
-        when "CAPTURED", "APPROVED"
+        when "CAPTURED", "APPROVED", "NOT ENROLLED", "ENROLLED"
           true
         else
           false
@@ -157,7 +180,7 @@ module ActiveMerchant #:nodoc:
         if succeeded
           "Succeeded"
         else
-          response[:result].split("-").last
+          (response[:error_text] || response[:result]).split("-").last
         end
       end
     end

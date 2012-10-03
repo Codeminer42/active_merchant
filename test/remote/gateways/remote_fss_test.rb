@@ -1,4 +1,5 @@
 require 'test_helper'
+require 'remote/integrations/remote_integration_helper'
 
 class RemoteFssTest < Test::Unit::TestCase
   def setup
@@ -22,6 +23,7 @@ class RemoteFssTest < Test::Unit::TestCase
     assert response = @gateway.purchase(@amount, @credit_card, @options)
     assert_success response
     assert_equal "Succeeded", response.message
+    p response
   end
 
   def test_failed_purchase
@@ -65,6 +67,40 @@ class RemoteFssTest < Test::Unit::TestCase
               )
     assert response = gateway.purchase(@amount, @credit_card, @options)
     assert_failure response
-    assert_equal "Failed", response.message
+    assert_equal "TranPortal ID required.", response.message
+  end
+
+  include RemoteIntegrationHelper
+
+  def test_3d_successful_preauthorize_enrolled
+    gateway = FssGateway.new(fixtures(:fss_3d))
+
+    assert response = gateway.preauthorize(@amount, @credit_card, @options)
+    assert_success response
+    assert_equal "Succeeded", response.message
+    assert_not_nil threed_result = response.threed_result
+    assert threed_result.enrolled?
+    assert_match %r(^https://.+$), threed_result.url
+    assert_match %r(^.+$), threed_result.pareq
+  end
+
+  def test_3d_successful_preauthorize_not_enrolled
+    gateway = FssGateway.new(fixtures(:fss_3d))
+
+    assert response = gateway.preauthorize(@amount, credit_card("4012001038443335"), @options)
+    assert_success response
+    assert_equal "Succeeded", response.message
+    assert_not_nil threed_result = response.threed_result
+    assert !threed_result.enrolled?
+    assert_nil threed_result.url
+    assert_nil threed_result.pareq
+  end
+
+  def test_3d_failed_preauthorize
+    gateway = FssGateway.new(fixtures(:fss_3d))
+
+    assert response = gateway.preauthorize(@amount, credit_card("4012001038488884"), @options)
+    assert_failure response
+    assert_equal "Authentication Not Available", response.message
   end
 end
