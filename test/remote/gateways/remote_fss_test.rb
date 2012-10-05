@@ -23,7 +23,6 @@ class RemoteFssTest < Test::Unit::TestCase
     assert response = @gateway.purchase(@amount, @credit_card, @options)
     assert_success response
     assert_equal "Succeeded", response.message
-    p response
   end
 
   def test_failed_purchase
@@ -70,37 +69,64 @@ class RemoteFssTest < Test::Unit::TestCase
     assert_equal "TranPortal ID required.", response.message
   end
 
-  include RemoteIntegrationHelper
-
-  def test_3d_successful_preauthorize_enrolled
+  def test_successful_start_preauth_enrolled
     gateway = FssGateway.new(fixtures(:fss_3d))
 
-    assert response = gateway.preauthorize(@amount, @credit_card, @options)
+    assert response = gateway.start_preauth(@amount, @credit_card, @options)
     assert_success response
     assert_equal "Succeeded", response.message
-    assert_not_nil threed_result = response.threed_result
-    assert threed_result.enrolled?
-    assert_match %r(^https://.+$), threed_result.url
-    assert_match %r(^.+$), threed_result.pareq
+    assert_not_nil preauth_result = response.preauth_result
+    assert preauth_result.enrolled?
+    assert_match %r(^https://.+$), preauth_result.url
+    assert_equal %w(PaReq MD), preauth_result.fields.keys
+    assert_match %r(^.+$), preauth_result.fields["PaReq"]
+    assert_match %r(^.+$), preauth_result.fields["MD"]
   end
 
-  def test_3d_successful_preauthorize_not_enrolled
+  def test_successful_start_preauth_not_enrolled
     gateway = FssGateway.new(fixtures(:fss_3d))
 
-    assert response = gateway.preauthorize(@amount, credit_card("4012001038443335"), @options)
+    assert response = gateway.start_preauth(@amount, credit_card("4012001038443335"), @options)
     assert_success response
     assert_equal "Succeeded", response.message
-    assert_not_nil threed_result = response.threed_result
-    assert !threed_result.enrolled?
-    assert_nil threed_result.url
-    assert_nil threed_result.pareq
+    assert_not_nil preauth_result = response.preauth_result
+    assert !preauth_result.enrolled?
+    assert_nil preauth_result.url
+    assert_equal %w(PaReq MD), preauth_result.fields.keys
+    assert_nil preauth_result.fields["PaReq"]
   end
 
-  def test_3d_failed_preauthorize
+  def test_failed_start_preauth
     gateway = FssGateway.new(fixtures(:fss_3d))
 
-    assert response = gateway.preauthorize(@amount, credit_card("4012001038488884"), @options)
+    assert response = gateway.start_preauth(@amount, credit_card("4012001038488884"), @options)
     assert_failure response
     assert_equal "Authentication Not Available", response.message
+  end
+
+  include RemoteIntegrationHelper
+
+  def test_successful_purchase_with_preauth
+    gateway = FssGateway.new(fixtures(:fss_3d))
+
+    assert response = gateway.start_preauth(@amount, @credit_card, @options)
+    assert_success response
+
+    preauth_page = submit %(
+      <form action="#{response.preauth_result.url}" method="POST">
+        <input type="hidden" name="PaReq" value="#{response.preauth_result.fields["PaReq"]}">
+        <input type="hidden" name="MD" value="#{response.preauth_result.fields["MD"]}">
+        <input type="hidden" name="TermUrl" value="http://example.com/post">
+      </form>
+    )
+
+    form = preauth_page.forms.first
+    assert_equal "http://example.com/post", form.action
+
+    preauth = gateway.finish_preauth(form.request_data)
+
+    purchase = gateway.purchase(@amount, @credit_card, @options.merge(preauth: preauth))
+    assert_success purchase
+    assert purchase.preauth_result.enrolled?
   end
 end

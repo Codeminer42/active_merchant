@@ -5,7 +5,7 @@ module ActiveMerchant #:nodoc:
     end
 
     class Response
-      attr_reader :params, :message, :test, :authorization, :avs_result, :cvv_result, :threed_result
+      attr_reader :params, :message, :test, :authorization, :avs_result, :cvv_result, :preauth_result
 
       def success?
         @success
@@ -26,7 +26,7 @@ module ActiveMerchant #:nodoc:
         @fraud_review = options[:fraud_review]
         @avs_result = AVSResult.new(options[:avs_result]).to_hash
         @cvv_result = CVVResult.new(options[:cvv_result]).to_hash
-        @threed_result = ThreedResult.new(options[:threed_result])
+        @preauth_result = PreauthResult.new(options[:preauth_result])
       end
     end
 

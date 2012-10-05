@@ -25,7 +25,7 @@ module ActiveMerchant #:nodoc:
         super
       end
 
-      def preauthorize(amount, payment_method, options={})
+      def start_preauth(amount, payment_method, options={})
         post = {}
         add_invoice(post, amount, options)
         add_payment_method(post, payment_method)
@@ -34,13 +34,27 @@ module ActiveMerchant #:nodoc:
         commit("preauth", post)
       end
 
+      def finish_preauth(raw_preauth)
+        parsed_preauth = parse_preauth(raw_preauth)
+        requires!(parsed_preauth, :pares, :md)
+
+        {
+          :pares => parsed_preauth[:pares],
+          :paymentid => parsed_preauth[:md]
+        }
+      end
+
       def purchase(amount, payment_method, options={})
         post = {}
-        add_invoice(post, amount, options)
-        add_payment_method(post, payment_method)
-        add_customer_data(post, options)
-
-        commit("purchase", post)
+        if options[:preauth]
+          add_preauth(post, options[:preauth])
+          commit("use_preauth", post)
+        else
+          add_invoice(post, amount, options)
+          add_payment_method(post, payment_method)
+          add_customer_data(post, options)
+          commit("purchase", post)
+        end
       end
 
       def authorize(amount, payment_method, options={})
@@ -98,12 +112,18 @@ module ActiveMerchant #:nodoc:
         post[:tranid] = authorization
       end
 
+      def add_preauth(post, preauth)
+        post.merge!(preauth)
+      end
+
       def parse(xml)
         response = {}
 
         doc = Nokogiri::XML.fragment(xml)
         doc.children.each do |node|
-          if (node.elements.size == 0)
+          if node.text?
+            next
+          elsif (node.elements.size == 0)
             response[node.name.downcase.to_sym] = node.text
           else
             node.elements.each do |childnode|
@@ -122,15 +142,15 @@ module ActiveMerchant #:nodoc:
         "refund" => "2",
         "authorize" => "4",
         "capture" => "5",
+        "use_preauth" => nil,
       }
 
       def commit(action, post)
         post[:id] = @options[:login]
         post[:password] = @options[:password]
-        post[:action] = ACTIONS[action]
+        post[:action] = ACTIONS[action] if ACTIONS[action]
 
         raw = parse(ssl_post(url(action), build_request(post)))
-        p raw
 
         succeeded = success_from(raw[:result])
         Response.new(
@@ -139,11 +159,13 @@ module ActiveMerchant #:nodoc:
           raw,
           :authorization => raw[:tranid],
           :test => test?,
-          :threed_result => {
-            :enrolled => (raw[:result] == "ENROLLED"),
+          :preauth_result => {
+            :enrolled => enrolled_from(action, raw),
             :url => raw[:url],
-            :pareq => raw[:pareq],
-            :md => raw[:payment_id]
+            :fields => {
+              "PaReq" => raw[:pareq],
+              "MD" => raw[:paymentid]
+            }
           }
         )
       end
@@ -161,6 +183,8 @@ module ActiveMerchant #:nodoc:
         endpoint = case action
         when "preauth"
           "MPIVerifyEnrollmentXMLServlet"
+        when "use_preauth"
+          "MPIPayerAuthenticationXMLServlet"
         else
           "TranPortalXMLServlet"
         end
@@ -181,6 +205,29 @@ module ActiveMerchant #:nodoc:
           "Succeeded"
         else
           (response[:error_text] || response[:result]).split("-").last
+        end
+      end
+
+      def parse_preauth(raw)
+        case raw
+        when Hash
+          raw.inject({}){|hash, (k,v)| hash[k.to_s.downcase.to_sym] = v}
+        when String
+          raw.split("&").inject({}) do |hash, parameter|
+            key, value = parameter.split("=")
+            hash[CGI.unescape(key).downcase.to_sym] = CGI.unescape(value)
+            hash
+          end
+        else
+          raise ArgumentError.new("Unknown raw preauth format: #{raw}")
+        end
+      end
+
+      def enrolled_from(action, raw)
+        if action == "use_preauth"
+          true
+        else
+          (raw[:result] == "ENROLLED")
         end
       end
     end

@@ -1,15 +1,14 @@
 module ActiveMerchant
   module Billing
-    class ThreedResult
-      attr_reader :url, :pareq, :md
+    class PreauthResult
+      attr_reader :url, :fields
 
       def initialize(attrs)
         attrs ||= {}
 
         @enrolled = attrs[:enrolled]
         @url = attrs[:url]
-        @pareq = attrs[:pareq]
-        @md = attrs[:md]
+        @fields = attrs[:fields]
       end
 
       def enrolled?
