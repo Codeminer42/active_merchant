@@ -4,6 +4,8 @@ class HdfcTest < Test::Unit::TestCase
   include CommStub
 
   def setup
+    Base.mode = :test
+
     @gateway = HdfcGateway.new(
       :login => 'login',
       :password => 'password'

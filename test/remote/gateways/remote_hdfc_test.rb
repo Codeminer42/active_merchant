@@ -3,6 +3,8 @@ require 'remote/integrations/remote_integration_helper'
 
 class RemoteHdfcTest < Test::Unit::TestCase
   def setup
+    Base.mode = :test
+
     @gateway = HdfcGateway.new(fixtures(:hdfc))
 
     @amount = 100
