@@ -1,10 +1,10 @@
 require 'test_helper'
 
-class FssTest < Test::Unit::TestCase
+class HdfcTest < Test::Unit::TestCase
   include CommStub
 
   def setup
-    @gateway = FssGateway.new(
+    @gateway = HdfcGateway.new(
       :login => 'login',
       :password => 'password'
     )
@@ -104,6 +104,23 @@ class FssTest < Test::Unit::TestCase
       @gateway.purchase(@amount, @credit_card, :description => "Awesome Services By Us")
     end.check_request do |endpoint, data, headers|
       assert_match(/Awesome Services By Us/, data)
+    end.respond_with(successful_purchase_response)
+  end
+
+  def test_escaping
+    stub_comms do
+      @gateway.purchase(@amount, @credit_card, :order_id => "a" * 41, :description => "This has 'Hack Characters' ~`!\#$%^=+|\\:'\",;<>{}[]() and non-Hack Characters -_@.")
+    end.check_request do |endpoint, data, headers|
+      assert_match(/>This has Hack Characters  and non-Hack Characters -_@.</, data)
+      assert_match(/>#{"a" * 40}</, data)
+    end.respond_with(successful_purchase_response)
+  end
+
+  def test_passing_billing_address
+    stub_comms do
+      @gateway.purchase(@amount, @credit_card, :billing_address => address)
+    end.check_request do |endpoint, data, headers|
+      assert_match(/udf4>Jim Smith\nWidgets Inc\n1234 My Street\nApt 1\nOttawa ON K1C2N6\nCA/, data)
     end.respond_with(successful_purchase_response)
   end
 

@@ -1,15 +1,15 @@
 require 'test_helper'
 require 'remote/integrations/remote_integration_helper'
 
-class RemoteFssTest < Test::Unit::TestCase
+class RemoteHdfcTest < Test::Unit::TestCase
   def setup
-    @gateway = FssGateway.new(fixtures(:fss))
+    @gateway = HdfcGateway.new(fixtures(:hdfc))
 
     @amount = 100
     @credit_card = credit_card("4012001037141112")
 
-    # Use an American Express card to simulate a failure until we get a proper
-    # test card.
+    # Use an American Express card to simulate a failure since HDFC does not
+    # support any proper decline cards outside of 3D secure failures.
     @declined_card = credit_card("377182068239368", :brand => :american_express)
 
     @options = {
@@ -59,8 +59,13 @@ class RemoteFssTest < Test::Unit::TestCase
     assert_equal "Succeeded", capture.message
   end
 
+  def test_passing_billing_address
+    assert response = @gateway.purchase(@amount, @credit_card, @options.merge(:billing_address => address))
+    assert_success response
+  end
+
   def test_invalid_login
-    gateway = FssGateway.new(
+    gateway = HdfcGateway.new(
                 :login => "",
                 :password => ""
               )
@@ -70,9 +75,7 @@ class RemoteFssTest < Test::Unit::TestCase
   end
 
   def test_successful_start_preauth_enrolled
-    gateway = FssGateway.new(fixtures(:fss_3d))
-
-    assert response = gateway.start_preauth(@amount, @credit_card, @options)
+    assert response = @gateway.start_preauth(@amount, @credit_card, @options)
     assert_success response
     assert_equal "Succeeded", response.message
     assert_not_nil preauth_result = response.preauth_result
@@ -84,9 +87,7 @@ class RemoteFssTest < Test::Unit::TestCase
   end
 
   def test_successful_start_preauth_not_enrolled
-    gateway = FssGateway.new(fixtures(:fss_3d))
-
-    assert response = gateway.start_preauth(@amount, credit_card("4012001038443335"), @options)
+    assert response = @gateway.start_preauth(@amount, credit_card("4012001038443335"), @options)
     assert_success response
     assert_equal "Succeeded", response.message
     assert_not_nil preauth_result = response.preauth_result
@@ -97,9 +98,7 @@ class RemoteFssTest < Test::Unit::TestCase
   end
 
   def test_failed_start_preauth
-    gateway = FssGateway.new(fixtures(:fss_3d))
-
-    assert response = gateway.start_preauth(@amount, credit_card("4012001038488884"), @options)
+    assert response = @gateway.start_preauth(@amount, credit_card("4012001038488884"), @options)
     assert_failure response
     assert_equal "Authentication Not Available", response.message
   end
@@ -107,9 +106,7 @@ class RemoteFssTest < Test::Unit::TestCase
   include RemoteIntegrationHelper
 
   def test_successful_purchase_with_preauth
-    gateway = FssGateway.new(fixtures(:fss_3d))
-
-    assert response = gateway.start_preauth(@amount, @credit_card, @options)
+    assert response = @gateway.start_preauth(@amount, @credit_card, @options)
     assert_success response
 
     preauth_page = submit %(
@@ -123,9 +120,9 @@ class RemoteFssTest < Test::Unit::TestCase
     form = preauth_page.forms.first
     assert_equal "http://example.com/post", form.action
 
-    preauth = gateway.finish_preauth(form.request_data)
+    preauth = @gateway.finish_preauth(form.request_data)
 
-    purchase = gateway.purchase(@amount, @credit_card, @options.merge(preauth: preauth))
+    purchase = @gateway.purchase(@amount, @credit_card, @options.merge(preauth: preauth))
     assert_success purchase
     assert purchase.preauth_result.enrolled?
   end

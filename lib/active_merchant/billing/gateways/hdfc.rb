@@ -2,14 +2,12 @@ require "nokogiri"
 
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
-    class FssGateway < Gateway
+    class HdfcGateway < Gateway
       # TODO:
-      # * Implement 3D-secure flow
-      # * Figure out how to pass billing address
+      # * Flesh out remaining unit tests
       # * Fix capture/refund remote tests
-      # * Use a proper declined card in remote tests
-      self.display_name = "FSS"
-      self.homepage_url = "http://www.fss.co.in/"
+      self.display_name = "HDFC"
+      self.homepage_url = "http://www.hdfcbank.com/sme/sme-details/merchant-services/guzh6m0i"
 
       self.test_url = "https://securepgtest.fssnet.co.in/pgway/servlet/"
       self.live_url = "https://securepg.fssnet.co.in/pgway/servlet/"
@@ -86,24 +84,34 @@ module ActiveMerchant #:nodoc:
 
       private
 
-      CURRENCY_CODES = Hash.new{|h,k| raise ArgumentError.new("Unsupported currency for FSS: #{k}")}
+      CURRENCY_CODES = Hash.new{|h,k| raise ArgumentError.new("Unsupported currency for HDFC: #{k}")}
       CURRENCY_CODES["INR"] = "356"
 
       def add_invoice(post, amount, options)
         post[:amt] = amount(amount)
         post[:currencycode] = CURRENCY_CODES[options[:currency] || currency(amount)]
-        post[:trackid] = options[:order_id] if options[:order_id]
-        post[:udf1] = options[:description] if options[:description]
+        post[:trackid] = escape(options[:order_id], 40) if options[:order_id]
+        post[:udf1] = escape(options[:description]) if options[:description]
       end
 
       def add_customer_data(post, options)
-        post[:udf2] = options[:email] if options[:email]
+        post[:udf2] = escape(options[:email]) if options[:email]
+        if address = (options[:billing_address] || options[:address])
+          post[:udf4] = escape(<<EOA)
+#{address[:name]}
+#{address[:company]}
+#{address[:address1]}
+#{address[:address2]}
+#{address[:city]} #{address[:state]} #{address[:zip]}
+#{address[:country]}
+EOA
+        end
       end
 
       def add_payment_method(post, payment_method)
-        post[:member] = payment_method.name
-        post[:card] = payment_method.number
-        post[:cvv2] = payment_method.verification_value
+        post[:member] = escape(payment_method.name, 30)
+        post[:card] = escape(payment_method.number)
+        post[:cvv2] = escape(payment_method.verification_value)
         post[:expyear] = format(payment_method.year, :four_digits)
         post[:expmonth] = format(payment_method.month, :two_digits)
       end
@@ -206,6 +214,13 @@ module ActiveMerchant #:nodoc:
         else
           (response[:error_text] || response[:result]).split("-").last
         end
+      end
+
+      def escape(string, max_length=250)
+        if max_length
+          string = string[0...max_length]
+        end
+        string.gsub(/[^A-Za-z0-9 \-_@\.\n]/, '')
       end
 
       def parse_preauth(raw)
