@@ -169,6 +169,7 @@ EOA
           :test => test?,
           :preauth_result => {
             :enrolled => enrolled_from(action, raw),
+            :post => true,
             :url => raw[:url],
             :fields => {
               "PaReq" => raw[:pareq],
